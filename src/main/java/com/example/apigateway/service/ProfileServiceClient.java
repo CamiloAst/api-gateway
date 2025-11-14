@@ -1,64 +1,57 @@
 package com.example.apigateway.service;
 
 import com.example.apigateway.config.ServiceEndpointsProperties;
-import java.util.Map;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import com.example.apigateway.model.ProfileRequest;
+import com.example.apigateway.model.ProfileResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 @Service
 public class ProfileServiceClient {
 
-    private final ServiceEndpointsProperties properties;
     private final WebClient webClient;
+    private final ServiceEndpointsProperties services;
 
-    public ProfileServiceClient(WebClient.Builder webClientBuilder, ServiceEndpointsProperties properties) {
-        this.properties = properties;
-        this.webClient = webClientBuilder.baseUrl(properties.getProfile().getBaseUrl()).build();
+    public ProfileServiceClient(WebClient.Builder builder,
+                                ServiceEndpointsProperties services) {
+        this.webClient = builder.build();
+        this.services = services;
     }
 
-    private WebClient profileWebClient() {
-        return webClient;
+    private String baseUrl() {
+        return services.getProfile().getBaseUrl();
     }
 
-    public Mono<Map<String, Object>> getProfile(String userId) {
-        String path = properties.getProfile().getProfilesPath() + "/" + userId;
-        return profileWebClient()
-                .get()
-                .uri(path)
+    private String profilesPath() {
+        return services.getProfile().getProfilesPath();
+    }
+
+    public Mono<ProfileResponse> getProfile(String userId) {
+        String url = baseUrl() + profilesPath() + "/" + userId;
+
+        return webClient.get()
+                .uri(url)
                 .retrieve()
-                .bodyToMono(Map.class)
-                .onErrorResume(WebClientResponseException.NotFound.class, ex -> Mono.empty())
-                .defaultIfEmpty(Map.of());
+                .bodyToMono(ProfileResponse.class);
     }
 
-    public Mono<Map<String, Object>> updateProfile(String userId, Map<String, Object> payload) {
-        if (payload == null || payload.isEmpty()) {
-            return Mono.just(Map.of());
-        }
-        String path = properties.getProfile().getProfilesPath() + "/" + userId;
-        return profileWebClient()
-                .put()
-                .uri(path)
-                .bodyValue(payload)
+    public Mono<ProfileResponse> upsertProfile(String userId, ProfileRequest request) {
+        String url = baseUrl() + profilesPath() + "/" + userId;
+
+        return webClient.put()
+                .uri(url)
+                .bodyValue(request)
                 .retrieve()
-                .bodyToMono(Map.class)
-                .defaultIfEmpty(Map.of());
+                .bodyToMono(ProfileResponse.class);
     }
 
-    public Mono<ResponseEntity<String>> forward(String relativePath, HttpMethod method, Object payload) {
-        WebClient.RequestBodySpec requestSpec = profileWebClient()
-                .method(method)
-                .uri(relativePath);
+    public Mono<Void> deleteProfile(String userId) {
+        String url = baseUrl() + profilesPath() + "/" + userId;
 
-        WebClient.RequestHeadersSpec<?> headersSpec = payload != null
-                ? requestSpec.bodyValue(payload)
-                : requestSpec;
-
-        return headersSpec.exchangeToMono(clientResponse -> clientResponse.toEntity(String.class));
+        return webClient.delete()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(Void.class);
     }
 }
-

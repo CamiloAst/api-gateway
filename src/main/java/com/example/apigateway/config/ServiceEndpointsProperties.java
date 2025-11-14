@@ -1,62 +1,75 @@
 package com.example.apigateway.config;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.Getter;
-import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@Getter
-@Setter
 @ConfigurationProperties(prefix = "services")
 public class ServiceEndpointsProperties {
 
-    private final Security security = new Security();
-    private final Profile profile = new Profile();
+    private final Service security = new Service();
+    private final Service profile = new Service();
 
-    @Getter
-    @Setter
-    public static class Security {
-
-        /**
-         * Base URL for the security service.
-         */
-        @NotBlank
-        private String baseUrl = "http://localhost:8081";
-
-        /**
-         * Relative path for the authentication login endpoint.
-         */
-        @NotBlank
-        private String loginPath = "/auth/login";
-
-        /**
-         * Relative path for the user registration endpoint.
-         */
-        @NotBlank
-        private String registerPath = "/auth/register";
-
-        /**
-         * Base relative path for user resources.
-         */
-        @NotBlank
-        private String usersPath = "/users";
+    public Service getSecurity() {
+        return security;
     }
 
-    @Getter
-    @Setter
-    public static class Profile {
+    public Service getProfile() {
+        return profile;
+    }
+
+    public static class Service {
+        /**
+         * URL base del microservicio, ej: http://auth-app:8080
+         */
+        private String baseUrl;
 
         /**
-         * Base URL for the profile management service.
+         * Rutas específicas
          */
-        @NotBlank
-        private String baseUrl = "http://localhost:8082";
+        private String loginPath;
+        private String registerPath;
+        private String usersPath;
+        private String profilesPath;
 
-        /**
-         * Base relative path for profile resources.
-         */
-        @NotBlank
-        private String profilesPath = "/profiles";
+        // getters y setters
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public String getLoginPath() {
+            return loginPath;
+        }
+
+        public void setLoginPath(String loginPath) {
+            this.loginPath = loginPath;
+        }
+
+        public String getRegisterPath() {
+            return registerPath;
+        }
+
+        public void setRegisterPath(String registerPath) {
+            this.registerPath = registerPath;
+        }
+
+        public String getUsersPath() {
+            return usersPath;
+        }
+
+        public void setUsersPath(String usersPath) {
+            this.usersPath = usersPath;
+        }
+
+        public String getProfilesPath() {
+            return profilesPath;
+        }
+
+        public void setProfilesPath(String profilesPath) {
+            this.profilesPath = profilesPath;
+        }
     }
 }
-

@@ -1,76 +1,129 @@
 package com.example.apigateway.service;
 
 import com.example.apigateway.config.ServiceEndpointsProperties;
-import java.util.Map;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import com.example.apigateway.model.*;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 @Service
 public class SecurityServiceClient {
 
-    private final ServiceEndpointsProperties properties;
     private final WebClient webClient;
+    private final ServiceEndpointsProperties services;
 
-    public SecurityServiceClient(WebClient.Builder webClientBuilder, ServiceEndpointsProperties properties) {
-        this.properties = properties;
-        this.webClient = webClientBuilder.baseUrl(properties.getSecurity().getBaseUrl()).build();
+    public SecurityServiceClient(WebClient.Builder builder,ServiceEndpointsProperties services) {
+        this.webClient = builder.build();
+        this.services = services;
     }
 
-    private WebClient securityWebClient() {
-        return webClient;
-    }
+    /**
+     * LOGIN
+     */
+    public Mono<AuthResponse> login(LoginRequest request) {
 
-    public Mono<ResponseEntity<String>> authenticate(Map<String, Object> payload) {
-        return forward(properties.getSecurity().getLoginPath(), HttpMethod.POST, payload);
-    }
+        ServiceEndpointsProperties.Service security = services.getSecurity();
+        String url = security.getBaseUrl() + security.getLoginPath();
+        // baseUrl = http://auth-app:8080, loginPath = /api/auth/login
 
-    public Mono<ResponseEntity<String>> register(Map<String, Object> payload) {
-        return forward(properties.getSecurity().getRegisterPath(), HttpMethod.POST, payload);
-    }
-
-    public Mono<ResponseEntity<String>> deleteUser(String userId) {
-        String path = properties.getSecurity().getUsersPath() + "/" + userId;
-        return forward(path, HttpMethod.DELETE, null);
-    }
-
-    public Mono<Map<String, Object>> getUser(String userId) {
-        String path = properties.getSecurity().getUsersPath() + "/" + userId;
-        return securityWebClient()
-                .get()
-                .uri(path)
+        return webClient.post()
+                .uri(url)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_PLAIN)  // auth-app devuelve text/plain
+                .bodyValue(request)
                 .retrieve()
-                .bodyToMono(Map.class)
-                .onErrorResume(WebClientResponseException.NotFound.class, ex -> Mono.empty());
+                .onStatus(HttpStatusCode::isError, resp ->
+                        resp.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .flatMap(body ->
+                                        Mono.error(new RuntimeException(
+                                                "Error en login contra auth-app. " +
+                                                        "Status=" + resp.statusCode() +
+                                                        " Body=" + body
+                                        ))
+                                )
+                )
+                // auth-app devuelve el token como String plano
+                .bodyToMono(String.class)
+                .map(AuthResponse::new);  // lo envolvemos en AuthResponse { token }
     }
 
-    public Mono<Map<String, Object>> updateUser(String userId, Map<String, Object> payload) {
-        if (payload == null || payload.isEmpty()) {
-            return Mono.just(Map.of());
-        }
-        String path = properties.getSecurity().getUsersPath() + "/" + userId;
-        return securityWebClient()
-                .put()
-                .uri(path)
-                .bodyValue(payload)
+    /**
+     * REGISTER
+     */
+    public Mono<UserResponse> register(RegisterRequest request) {
+
+        ServiceEndpointsProperties.Service security = services.getSecurity();
+        String url = security.getBaseUrl() + security.getRegisterPath();
+        // Con tus props actuales baseUrl = http://auth-app:8080
+        // y usersPath/registerPath = /api/users  → POST http://auth-app:8080/api/users
+
+        return webClient.post()
+                .uri(url)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
                 .retrieve()
-                .bodyToMono(Map.class)
-                .defaultIfEmpty(Map.of());
+                .onStatus(HttpStatusCode::isError, resp ->
+                        resp.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .flatMap(body ->
+                                        Mono.error(new RuntimeException(
+                                                "Error al registrar usuario en auth-app. " +
+                                                        "Status=" + resp.statusCode() +
+                                                        " Body=" + body
+                                        ))
+                                )
+                )
+                .bodyToMono(UserResponse.class);
     }
 
-    private Mono<ResponseEntity<String>> forward(String path, HttpMethod method, Object payload) {
-        WebClient.RequestBodySpec requestSpec = securityWebClient()
-                .method(method)
-                .uri(path);
+    /**
+     * GET USER BY ID
+     */
+    public Mono<UserResponse> getUserById(String userId) {
 
-        WebClient.RequestHeadersSpec<?> headersSpec = payload != null
-                ? requestSpec.bodyValue(payload)
-                : requestSpec;
+        String url = services.getSecurity().getBaseUrl()
+                + services.getSecurity().getUsersPath()
+                + "/" + userId;
 
-        return headersSpec.exchangeToMono(clientResponse -> clientResponse.toEntity(String.class));
+        return webClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(UserResponse.class);
+    }
+
+    /**
+     * UPDATE USER
+     */
+    public Mono<UserResponse> updateUser(String userId, UpdateUserRequest request) {
+
+        String url = services.getSecurity().getBaseUrl()
+                + services.getSecurity().getUsersPath()
+                + "/" + userId;
+
+        return webClient.put()
+                .uri(url)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(UserResponse.class);
+    }
+
+    /**
+     * DELETE USER
+     */
+    public Mono<Void> deleteUser(String userId) {
+
+        String url = services.getSecurity().getBaseUrl()
+                + services.getSecurity().getUsersPath()
+                + "/" + userId;
+
+        return webClient.delete()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(Void.class);
     }
 }
-

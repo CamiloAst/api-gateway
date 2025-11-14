@@ -1,52 +1,60 @@
 package com.example.apigateway.web;
 
 import com.example.apigateway.events.UserDeletedEvent;
-import com.example.apigateway.service.SecurityServiceClient;
+import com.example.apigateway.model.FullUserRequest;
+import com.example.apigateway.model.FullUserResponse;
 import com.example.apigateway.service.UserAggregationService;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping("/users")
+@RequestMapping("/api/users")
 @RequiredArgsConstructor
 public class UserController {
 
-    private final SecurityServiceClient securityServiceClient;
     private final UserAggregationService userAggregationService;
     private final ApplicationEventPublisher applicationEventPublisher;
 
-    @DeleteMapping("/{userId}")
-    public Mono<ResponseEntity<String>> deleteUser(@PathVariable String userId) {
-        return securityServiceClient.deleteUser(userId)
-                .doOnSuccess(response -> {
-                    if (response != null && response.getStatusCode().is2xxSuccessful()) {
-                        applicationEventPublisher.publishEvent(new UserDeletedEvent(this, userId));
-                    }
-                });
-    }
-
+    /**
+     * GET /api/users/{userId}
+     * Devuelve datos completos (user + profile).
+     */
     @GetMapping("/{userId}")
-    public Mono<ResponseEntity<Map<String, Object>>> getUser(@PathVariable String userId) {
-        return userAggregationService.getCompleteUser(userId)
+    public Mono<ResponseEntity<FullUserResponse>> getUser(@PathVariable String userId) {
+        return userAggregationService.getFullUser(userId)
                 .map(ResponseEntity::ok);
     }
 
+    /**
+     * PUT /api/users/{userId}
+     * Actualiza datos completos del usuario (seguridad + perfil).
+     */
     @PutMapping("/{userId}")
-    public Mono<ResponseEntity<Map<String, Object>>> updateUser(
+    public Mono<ResponseEntity<FullUserResponse>> updateUser(
             @PathVariable String userId,
-            @RequestBody(required = false) UserUpdateRequest request) {
-        return userAggregationService.updateCompleteUser(userId, request == null ? new UserUpdateRequest(null, null) : request)
+            @RequestBody FullUserRequest request
+    ) {
+        return userAggregationService.updateFullUser(userId, request)
                 .map(ResponseEntity::ok);
+    }
+
+    /**
+     * DELETE /api/users/{userId}
+     * Elimina usuario en auth-app y perfil en profiles-service.
+     * Luego publica el evento UserDeletedEvent.
+     */
+    @DeleteMapping("/{userId}")
+    public Mono<ResponseEntity<Void>> deleteUser(@PathVariable String userId) {
+        return userAggregationService.deleteFullUser(userId)
+                // Solo se ejecuta si deleteFullUser() termina bien
+                .then(Mono.fromRunnable(() ->
+                        applicationEventPublisher.publishEvent(
+                                new UserDeletedEvent(this, userId)
+                        )
+                ))
+                .thenReturn(ResponseEntity.noContent().build());
     }
 }
-
